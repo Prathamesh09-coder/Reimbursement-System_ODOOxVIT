@@ -1,18 +1,14 @@
 import React, { useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import { useNotifications } from "@/contexts/NotificationContext";
 import { Button } from "@/components/ui/button";
 import {
-  LayoutDashboard, Receipt, CheckSquare, Users, GitBranch, Bell,
+  LayoutDashboard, Receipt, CheckSquare, Users, GitBranch,
   Menu, X, LogOut, ChevronDown, Wallet
 } from "lucide-react";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu";
-import { Badge } from "@/components/ui/badge";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import type { UserRole } from "@/contexts/AuthContext";
 import NotificationDropdown from "@/components/NotificationDropdown";
 
 interface AppLayoutProps {
@@ -28,8 +24,7 @@ const NAV_ITEMS = [
 ];
 
 const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
-  const { user, logout, setRole } = useAuth();
-  const { unreadCount } = useNotifications();
+  const { user, logout } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const location = useLocation();
 
@@ -53,7 +48,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
             <Wallet className="h-4 w-4 text-sidebar-primary-foreground" />
           </div>
           <span className="text-sidebar-foreground font-bold text-lg tracking-tight">ReimburseIQ</span>
-          <button className="ml-auto lg:hidden text-sidebar-muted" onClick={() => setSidebarOpen(false)}>
+          <button title="Close sidebar" aria-label="Close sidebar" className="ml-auto lg:hidden text-sidebar-muted" onClick={() => setSidebarOpen(false)}>
             <X className="h-5 w-5" />
           </button>
         </div>
@@ -79,19 +74,8 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
           })}
         </nav>
 
-        {/* Role switcher for demo */}
-        <div className="p-3 border-t border-sidebar-border">
-          <p className="text-xs text-sidebar-muted mb-2 px-1">Demo: Switch role</p>
-          <Select value={user?.role} onValueChange={(v) => setRole(v as UserRole)}>
-            <SelectTrigger className="bg-sidebar-accent border-sidebar-border text-sidebar-foreground text-xs h-8">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {(["admin", "manager", "employee", "finance", "director"] as UserRole[]).map((r) => (
-                <SelectItem key={r} value={r} className="text-xs capitalize">{r}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+        <div className="p-3 border-t border-sidebar-border text-xs text-sidebar-muted">
+          Role: <span className="capitalize text-sidebar-foreground">{user?.role}</span>
         </div>
       </aside>
 
@@ -99,7 +83,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
       <div className="flex-1 flex flex-col min-w-0">
         {/* Top navbar */}
         <header className="h-16 bg-card border-b flex items-center justify-between px-4 lg:px-6 sticky top-0 z-30">
-          <button className="lg:hidden text-muted-foreground" onClick={() => setSidebarOpen(true)}>
+          <button title="Open sidebar" aria-label="Open sidebar" className="lg:hidden text-muted-foreground" onClick={() => setSidebarOpen(true)}>
             <Menu className="h-5 w-5" />
           </button>
 

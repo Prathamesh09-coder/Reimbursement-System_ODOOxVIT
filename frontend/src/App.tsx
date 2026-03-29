@@ -62,7 +62,11 @@ const AuthRoutes = () => {
 };
 
 const AppRouter = () => {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, isLoading } = useAuth();
+
+  if (isLoading) {
+    return <div className="min-h-screen grid place-items-center text-sm text-muted-foreground">Loading...</div>;
+  }
 
   return (
     <BrowserRouter>

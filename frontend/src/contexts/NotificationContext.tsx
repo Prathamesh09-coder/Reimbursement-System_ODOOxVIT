@@ -1,7 +1,9 @@
-import React, { createContext, useContext, useState } from "react";
+import React, { createContext, useContext, useEffect, useState } from "react";
+import { useAuth } from "@/contexts/AuthContext";
+import { api } from "@/lib/api";
 
 export interface Notification {
-  id: string;
+  id: number;
   message: string;
   type: "info" | "approval" | "approved" | "rejected";
   read: boolean;
@@ -11,7 +13,7 @@ export interface Notification {
 interface NotificationContextType {
   notifications: Notification[];
   unreadCount: number;
-  markAsRead: (id: string) => void;
+  markAsRead: (id: number) => void;
   markAllRead: () => void;
 }
 
@@ -23,23 +25,71 @@ export const useNotifications = () => {
   return ctx;
 };
 
-const INITIAL: Notification[] = [
-  { id: "1", message: "New expense submitted by Sarah for $250", type: "info", read: false, timestamp: "2 min ago" },
-  { id: "2", message: "Your expense #1042 requires approval", type: "approval", read: false, timestamp: "15 min ago" },
-  { id: "3", message: "Expense #1038 has been approved", type: "approved", read: false, timestamp: "1 hour ago" },
-  { id: "4", message: "Expense #1035 was rejected by Finance", type: "rejected", read: true, timestamp: "3 hours ago" },
-  { id: "5", message: "New user John added to your team", type: "info", read: true, timestamp: "1 day ago" },
-];
+const toNotificationType = (value?: string | null): Notification["type"] => {
+  const normalized = (value || "").toLowerCase();
+  if (normalized === "approval") return "approval";
+  if (normalized === "approved") return "approved";
+  if (normalized === "rejected") return "rejected";
+  return "info";
+};
+
+const toRelativeTime = (timestamp: string): string => {
+  const date = new Date(timestamp);
+  const deltaSec = Math.max(1, Math.floor((Date.now() - date.getTime()) / 1000));
+  if (deltaSec < 60) return `${deltaSec}s ago`;
+  const deltaMin = Math.floor(deltaSec / 60);
+  if (deltaMin < 60) return `${deltaMin}m ago`;
+  const deltaHours = Math.floor(deltaMin / 60);
+  if (deltaHours < 24) return `${deltaHours}h ago`;
+  const deltaDays = Math.floor(deltaHours / 24);
+  return `${deltaDays}d ago`;
+};
 
 export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [notifications, setNotifications] = useState<Notification[]>(INITIAL);
+  const { token, isAuthenticated } = useAuth();
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+
+  useEffect(() => {
+    const load = async () => {
+      if (!token || !isAuthenticated) {
+        setNotifications([]);
+        return;
+      }
+
+      try {
+        const rows = await api.listNotifications(token);
+        setNotifications(
+          rows.map((row) => ({
+            id: row.id,
+            message: row.message || "Notification",
+            type: toNotificationType(row.type),
+            read: row.is_read,
+            timestamp: toRelativeTime(row.created_at),
+          }))
+        );
+      } catch {
+        setNotifications([]);
+      }
+    };
+
+    void load();
+  }, [token, isAuthenticated]);
 
   const unreadCount = notifications.filter((n) => !n.read).length;
 
-  const markAsRead = (id: string) =>
+  const markAsRead = (id: number) => {
     setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)));
+    if (token) {
+      void api.markNotificationRead(token, id);
+    }
+  };
 
-  const markAllRead = () => setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+  const markAllRead = () => {
+    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+    if (token) {
+      void api.markAllNotificationsRead(token);
+    }
+  };
 
   return (
     <NotificationContext.Provider value={{ notifications, unreadCount, markAsRead, markAllRead }}>

@@ -2,6 +2,7 @@ import { prisma } from "../../config/db";
 import axios from "axios";
 import { comparePassword, hashPassword, generatePassword } from "../../utils/password";
 import { sendEmail } from "../../services/emailService";
+import { signAuthToken } from "../../utils/token";
 
 type CountryCurrencyApiResponse = Array<{
   name?: {
@@ -85,7 +86,50 @@ export const signup = async (data: {
     }
   });
 
-  return { user, company };
+  await prisma.expenseCategory.createMany({
+    data: [
+      { company_id: company.id, name: "Meals & Entertainment" },
+      { company_id: company.id, name: "Travel" },
+      { company_id: company.id, name: "Office Supplies" },
+      { company_id: company.id, name: "Software" },
+      { company_id: company.id, name: "Transportation" },
+      { company_id: company.id, name: "Accommodation" },
+      { company_id: company.id, name: "Training" },
+      { company_id: company.id, name: "Other" },
+    ],
+    skipDuplicates: true,
+  });
+
+  const token = signAuthToken({
+    id: user.id,
+    email: user.email,
+    role: adminRole.name,
+    company_id: company.id,
+  });
+
+  try {
+    await sendEmail({
+      to: user.email,
+      subject: "Welcome to ReimburseIQ",
+      text: `Hi ${name}, your company ${company.name} has been created successfully. You can now submit and track reimbursements.`,
+    });
+  } catch {
+    // Signup should not fail if mail provider is unavailable.
+  }
+
+  return {
+    token,
+    user: {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      role: adminRole.name,
+      company_id: user.company_id,
+      company_name: company.name,
+      currency: company.currency,
+    },
+    company,
+  };
 };
 
 export const forgotPassword = async (email: string) => {
@@ -104,7 +148,11 @@ export const forgotPassword = async (email: string) => {
     }
   });
 
-  await sendEmail(user.email, `Your password reset token: ${newPass}`);
+  await sendEmail({
+    to: user.email,
+    subject: "ReimburseIQ Password Reset Token",
+    text: `Your password reset token: ${newPass}`,
+  });
 
   return { message: "Password reset token sent to email" };
 };
@@ -131,11 +179,25 @@ export const login = async (data: { email: string; password: string }) => {
     throw error;
   }
 
-  return {
+  const payload = {
     id: user.id,
     email: user.email,
     name: user.name,
     role: user.role.name,
     company_id: user.company_id,
+    company_name: user.company.name,
+    currency: user.company.currency,
+  };
+
+  const token = signAuthToken({
+    id: user.id,
+    email: user.email,
+    role: user.role.name,
+    company_id: user.company_id,
+  });
+
+  return {
+    token,
+    user: payload,
   };
 };

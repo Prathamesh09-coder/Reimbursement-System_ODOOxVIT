@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
@@ -8,14 +8,51 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Wallet } from "lucide-react";
 import { COUNTRIES } from "@/data/mockData";
+import { toast } from "sonner";
 
 const SignupPage = () => {
   const { signup } = useAuth();
   const [form, setForm] = useState({ company: "", country: "", name: "", email: "", password: "" });
+  const [loading, setLoading] = useState(false);
+  const [countries, setCountries] = useState<string[]>(COUNTRIES);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  useEffect(() => {
+    const loadCountries = async () => {
+      try {
+        const response = await fetch("https://restcountries.com/v3.1/all?fields=name");
+        const payload = (await response.json()) as Array<{ name?: { common?: string } }>;
+        const dynamicCountries = payload
+          .map((row) => row.name?.common)
+          .filter((value): value is string => Boolean(value))
+          .sort((a, b) => a.localeCompare(b));
+
+        if (dynamicCountries.length) {
+          setCountries(dynamicCountries);
+        }
+      } catch {
+        setCountries(COUNTRIES);
+      }
+    };
+
+    void loadCountries();
+  }, []);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    signup(form);
+    if (!form.company || !form.country || !form.name || !form.email || !form.password) {
+      toast.error("Please fill all fields");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await signup(form);
+      toast.success("Account created successfully");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Signup failed");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const update = (field: string, value: string) => setForm((prev) => ({ ...prev, [field]: value }));
@@ -41,7 +78,7 @@ const SignupPage = () => {
               <Select onValueChange={(v) => update("country", v)}>
                 <SelectTrigger><SelectValue placeholder="Select country" /></SelectTrigger>
                 <SelectContent>
-                  {COUNTRIES.map((c) => (
+                  {countries.map((c) => (
                     <SelectItem key={c} value={c}>{c}</SelectItem>
                   ))}
                 </SelectContent>
@@ -59,7 +96,7 @@ const SignupPage = () => {
               <Label htmlFor="password">Password</Label>
               <Input id="password" type="password" value={form.password} onChange={(e) => update("password", e.target.value)} placeholder="••••••••" />
             </div>
-            <Button type="submit" className="w-full">Create account</Button>
+            <Button type="submit" className="w-full" disabled={loading}>{loading ? "Creating..." : "Create account"}</Button>
           </form>
           <p className="text-center text-sm text-muted-foreground mt-6">
             Already have an account?{" "}

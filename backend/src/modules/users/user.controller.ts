@@ -4,30 +4,28 @@ import { prisma } from "../../config/db";
 
 export const createUser = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    // Find admin user via role relationship
-    const admin = await prisma.user.findFirst({
-      where: {
-        role: { name: "ADMIN" }
-      }
-    });
-
-    if (!admin) {
-      return res.status(400).json({
-        success: false,
-        error: { message: "No admin found. Run seed script first." }
-      });
+    if (!req.user) {
+      return res.status(401).json({ success: false, error: { message: "Unauthorized" } });
     }
 
-    const user = await userService.createUser(req.body, { company_id: admin.company_id });
+    if (req.user.role !== "ADMIN") {
+      return res.status(403).json({ success: false, error: { message: "Only admin can create users" } });
+    }
+
+    const user = await userService.createUser(req.body, { company_id: req.user.company_id });
     res.status(201).json({ success: true, data: user });
   } catch (error) {
     next(error);
   }
 };
 
-export const listUsers = async (_req: Request, res: Response, next: NextFunction) => {
+export const listUsers = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const users = await userService.listUsers();
+    if (!req.user) {
+      return res.status(401).json({ success: false, error: { message: "Unauthorized" } });
+    }
+
+    const users = await userService.listUsers(req.user.company_id);
     res.json({ success: true, data: users });
   } catch (error) {
     next(error);
@@ -36,6 +34,10 @@ export const listUsers = async (_req: Request, res: Response, next: NextFunction
 
 export const getUserById = async (req: Request, res: Response, next: NextFunction) => {
   try {
+    if (!req.user) {
+      return res.status(401).json({ success: false, error: { message: "Unauthorized" } });
+    }
+
     const userId = parseInt(req.params.id as string, 10);
     if (!userId || userId <= 0) {
       return res.status(400).json({
@@ -44,8 +46,8 @@ export const getUserById = async (req: Request, res: Response, next: NextFunctio
       });
     }
 
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
+    const user = await prisma.user.findFirst({
+      where: { id: userId, company_id: req.user.company_id },
       include: { role: true, company: true }
     });
 
@@ -84,6 +86,14 @@ export const listRoles = async (_req: Request, res: Response, next: NextFunction
 
 export const updateUserRole = async (req: Request, res: Response, next: NextFunction) => {
   try {
+    if (!req.user) {
+      return res.status(401).json({ success: false, error: { message: "Unauthorized" } });
+    }
+
+    if (req.user.role !== "ADMIN") {
+      return res.status(403).json({ success: false, error: { message: "Only admin can update roles" } });
+    }
+
     const userId = parseInt(req.params.id as string, 10);
     const role = String(req.body?.role || "").trim();
 
@@ -101,7 +111,7 @@ export const updateUserRole = async (req: Request, res: Response, next: NextFunc
       });
     }
 
-    const updatedUser = await userService.updateUserRole(userId, role);
+    const updatedUser = await userService.updateUserRole(userId, role, req.user.company_id);
     res.json({
       success: true,
       data: {
@@ -111,6 +121,28 @@ export const updateUserRole = async (req: Request, res: Response, next: NextFunc
         role: updatedUser.role.name,
       },
     });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const sendPasswordToUser = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ success: false, error: { message: "Unauthorized" } });
+    }
+
+    if (req.user.role !== "ADMIN") {
+      return res.status(403).json({ success: false, error: { message: "Only admin can send passwords" } });
+    }
+
+    const userId = parseInt(req.params.id as string, 10);
+    if (!userId || userId <= 0) {
+      return res.status(400).json({ success: false, error: { message: "Invalid user ID" } });
+    }
+
+    const result = await userService.sendPasswordToUser(userId, req.user.company_id);
+    res.json({ success: true, data: result });
   } catch (error) {
     next(error);
   }

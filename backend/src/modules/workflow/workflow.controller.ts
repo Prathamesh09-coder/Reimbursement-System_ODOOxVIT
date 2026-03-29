@@ -9,6 +9,14 @@ export const assignManager = async (
   next: NextFunction
 ) => {
   try {
+    if (!req.user) {
+      return res.status(401).json({ success: false, error: { message: "Unauthorized" } });
+    }
+
+    if (req.user.role !== "ADMIN") {
+      return res.status(403).json({ success: false, error: { message: "Only admin can assign manager" } });
+    }
+
     const { employeeId, managerId } = req.body;
 
     if (!employeeId || !managerId) {
@@ -18,7 +26,7 @@ export const assignManager = async (
       });
     }
 
-    const result = await workflowService.assignManager(employeeId, managerId);
+    const result = await workflowService.assignManager(employeeId, managerId, req.user.company_id);
     res.json({
       success: true,
       data: {
@@ -39,6 +47,10 @@ export const getTeamMembers = async (
   next: NextFunction
 ) => {
   try {
+    if (!req.user) {
+      return res.status(401).json({ success: false, error: { message: "Unauthorized" } });
+    }
+
     const managerId = parseInt(req.params.managerId as string, 10);
 
     if (!managerId || managerId <= 0) {
@@ -48,7 +60,7 @@ export const getTeamMembers = async (
       });
     }
 
-    const team = await workflowService.getTeamMembers(managerId);
+    const team = await workflowService.getTeamMembers(managerId, req.user.company_id);
     res.json({
       success: true,
       data: team.map((u: any) => ({
@@ -69,6 +81,10 @@ export const getManagerHierarchy = async (
   next: NextFunction
 ) => {
   try {
+    if (!req.user) {
+      return res.status(401).json({ success: false, error: { message: "Unauthorized" } });
+    }
+
     const employeeId = parseInt(req.params.employeeId as string, 10);
 
     if (!employeeId || employeeId <= 0) {
@@ -78,7 +94,7 @@ export const getManagerHierarchy = async (
       });
     }
 
-    const manager = await workflowService.getManagerHierarchy(employeeId);
+    const manager = await workflowService.getManagerHierarchy(employeeId, req.user.company_id);
     res.json({
       success: true,
       data: manager
@@ -98,12 +114,16 @@ export const getManagerHierarchy = async (
 // ============ WORKFLOW MANAGEMENT ============
 
 export const listWorkflows = async (
-  _req: Request,
+  req: Request,
   res: Response,
   next: NextFunction
 ) => {
   try {
-    const workflows = await workflowService.listWorkflows();
+    if (!req.user) {
+      return res.status(401).json({ success: false, error: { message: "Unauthorized" } });
+    }
+
+    const workflows = await workflowService.listWorkflows(req.user.company_id);
     res.json({
       success: true,
       data: workflows,
@@ -122,20 +142,28 @@ export const createWorkflow = async (
   next: NextFunction
 ) => {
   try {
-    const { company_id, name, steps, rule } = req.body;
+    if (!req.user) {
+      return res.status(401).json({ success: false, error: { message: "Unauthorized" } });
+    }
 
-    if (!company_id || !name || !steps || !Array.isArray(steps) || steps.length === 0) {
+    if (req.user.role !== "ADMIN") {
+      return res.status(403).json({ success: false, error: { message: "Only admin can create workflows" } });
+    }
+
+    const { name, steps, rule } = req.body;
+
+    if (!name || !steps || !Array.isArray(steps) || steps.length === 0) {
       return res.status(400).json({
         success: false,
         error: {
           message:
-            "company_id, name, and steps array are required",
+            "name and steps array are required",
         },
       });
     }
 
     const result = await workflowService.createWorkflow({
-      company_id,
+      company_id: req.user.company_id,
       name,
       steps,
       rule,
@@ -156,6 +184,10 @@ export const getWorkflow = async (
   next: NextFunction
 ) => {
   try {
+    if (!req.user) {
+      return res.status(401).json({ success: false, error: { message: "Unauthorized" } });
+    }
+
     const workflowId = parseInt(req.params.workflowId as string, 10);
 
     if (!workflowId || workflowId <= 0) {
@@ -165,7 +197,7 @@ export const getWorkflow = async (
       });
     }
 
-    const workflow = await workflowService.getWorkflow(workflowId);
+    const workflow = await workflowService.getWorkflow(workflowId, req.user.company_id);
 
     if (!workflow) {
       return res.status(404).json({
@@ -189,6 +221,14 @@ export const updateWorkflowRule = async (
   next: NextFunction
 ) => {
   try {
+    if (!req.user) {
+      return res.status(401).json({ success: false, error: { message: "Unauthorized" } });
+    }
+
+    if (req.user.role !== "ADMIN") {
+      return res.status(403).json({ success: false, error: { message: "Only admin can update workflow rules" } });
+    }
+
     const ruleId = parseInt(req.params.ruleId as string, 10);
     const { min_approval_percentage, is_sequential, special_approver_id } =
       req.body;

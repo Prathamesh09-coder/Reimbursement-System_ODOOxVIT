@@ -1,6 +1,5 @@
-import React, { useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { MOCK_EXPENSES } from "@/data/mockData";
 import StatusBadge from "@/components/StatusBadge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,17 +7,38 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Card, CardContent } from "@/components/ui/card";
 import { Plus, Search } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { useAuth } from "@/contexts/AuthContext";
+import { api, type Expense } from "@/lib/api";
+import { formatMoney, normalizeStatus } from "@/lib/domain";
 
 const ExpenseListPage = () => {
   const isMobile = useIsMobile();
+  const { token, user } = useAuth();
+  const [expenses, setExpenses] = useState<Expense[]>([]);
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [search, setSearch] = useState("");
 
-  const filtered = MOCK_EXPENSES.filter((e) => {
-    if (statusFilter !== "all" && e.status !== statusFilter) return false;
-    if (search && !e.description.toLowerCase().includes(search.toLowerCase())) return false;
-    return true;
-  });
+  useEffect(() => {
+    const load = async () => {
+      if (!token) return;
+      const rows = await api.listExpenses(token);
+      setExpenses(rows);
+    };
+
+    void load();
+  }, [token]);
+
+  const filtered = useMemo(
+    () =>
+      expenses.filter((expense) => {
+        const status = normalizeStatus(expense.status);
+        if (statusFilter !== "all" && status !== statusFilter) return false;
+        const text = `${expense.description || ""} ${expense.category?.name || ""}`.toLowerCase();
+        if (search && !text.includes(search.toLowerCase())) return false;
+        return true;
+      }),
+    [expenses, search, statusFilter]
+  );
 
   return (
     <div className="space-y-6">
@@ -52,18 +72,18 @@ const ExpenseListPage = () => {
 
       {isMobile ? (
         <div className="space-y-3">
-          {filtered.map((e) => (
-            <Link key={e.id} to={`/expenses/${e.id}`}>
+          {filtered.map((expense) => (
+            <Link key={expense.id} to={`/expenses/${expense.id}`}>
               <Card className="hover:shadow-md transition-shadow">
                 <CardContent className="p-4 space-y-2">
                   <div className="flex items-start justify-between">
                     <div>
-                      <p className="font-medium text-sm">{e.description}</p>
-                      <p className="text-xs text-muted-foreground">{e.category} · {e.date}</p>
+                      <p className="font-medium text-sm">{expense.description || "Untitled expense"}</p>
+                      <p className="text-xs text-muted-foreground">{expense.category?.name || "Uncategorized"} · {expense.expense_date?.slice(0, 10) || "-"}</p>
                     </div>
-                    <StatusBadge status={e.status} />
+                    <StatusBadge status={normalizeStatus(expense.status)} />
                   </div>
-                  <p className="text-lg font-bold">${e.amount.toFixed(2)}</p>
+                  <p className="text-lg font-bold">{formatMoney(expense.converted_amount || expense.amount, user?.currency || expense.currency)}</p>
                 </CardContent>
               </Card>
             </Link>
@@ -83,18 +103,18 @@ const ExpenseListPage = () => {
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {filtered.map((e) => (
-                  <tr key={e.id} className="hover:bg-muted/30 transition-colors">
+                {filtered.map((expense) => (
+                  <tr key={expense.id} className="hover:bg-muted/30 transition-colors">
                     <td className="p-3">
-                      <Link to={`/expenses/${e.id}`} className="text-sm font-medium hover:text-primary transition-colors">
-                        {e.description}
+                      <Link to={`/expenses/${expense.id}`} className="text-sm font-medium hover:text-primary transition-colors">
+                        {expense.description || "Untitled expense"}
                       </Link>
-                      <p className="text-xs text-muted-foreground">{e.id}</p>
+                      <p className="text-xs text-muted-foreground">#{expense.id}</p>
                     </td>
-                    <td className="p-3 text-sm">{e.category}</td>
-                    <td className="p-3 text-sm text-muted-foreground">{e.date}</td>
-                    <td className="p-3 text-sm font-semibold text-right">${e.amount.toFixed(2)}</td>
-                    <td className="p-3"><StatusBadge status={e.status} /></td>
+                    <td className="p-3 text-sm">{expense.category?.name || "Uncategorized"}</td>
+                    <td className="p-3 text-sm text-muted-foreground">{expense.expense_date?.slice(0, 10) || "-"}</td>
+                    <td className="p-3 text-sm font-semibold text-right">{formatMoney(expense.converted_amount || expense.amount, user?.currency || expense.currency)}</td>
+                    <td className="p-3"><StatusBadge status={normalizeStatus(expense.status)} /></td>
                   </tr>
                 ))}
               </tbody>

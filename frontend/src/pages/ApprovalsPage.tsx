@@ -1,5 +1,4 @@
-import React, { useState } from "react";
-import { MOCK_EXPENSES } from "@/data/mockData";
+import React, { useEffect, useState } from "react";
 import StatusBadge from "@/components/StatusBadge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -9,19 +8,52 @@ import { Label } from "@/components/ui/label";
 import { Check, X } from "lucide-react";
 import { toast } from "sonner";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { useAuth } from "@/contexts/AuthContext";
+import { api, type Expense } from "@/lib/api";
+import { formatMoney, normalizeStatus } from "@/lib/domain";
 
 const ApprovalsPage = () => {
   const isMobile = useIsMobile();
-  const pendingExpenses = MOCK_EXPENSES.filter((e) => e.status === "pending");
+  const { token, user } = useAuth();
+  const [pendingExpenses, setPendingExpenses] = useState<Expense[]>([]);
   const [rejectModal, setRejectModal] = useState<string | null>(null);
   const [comment, setComment] = useState("");
 
-  const handleApprove = (id: string) => {
-    toast.success(`Expense ${id} approved`);
+  const loadApprovals = async () => {
+    if (!token) return;
+    try {
+      const rows = await api.listApprovals(token);
+      setPendingExpenses(rows.filter((expense) => normalizeStatus(expense.status) === "pending"));
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to load approvals");
+    }
   };
 
-  const handleReject = () => {
-    toast.error(`Expense ${rejectModal} rejected`);
+  useEffect(() => {
+    void loadApprovals();
+  }, [token]);
+
+  const handleApprove = async (id: number) => {
+    if (!token) return;
+    try {
+      await api.approveExpense(token, id, "Approved");
+      toast.success(`Expense #${id} approved`);
+      await loadApprovals();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Approval failed");
+    }
+  };
+
+  const handleReject = async () => {
+    if (!token || !rejectModal) return;
+    try {
+      await api.rejectExpense(token, Number(rejectModal), comment || "Rejected");
+      toast.error(`Expense #${rejectModal} rejected`);
+      await loadApprovals();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Rejection failed");
+    }
+
     setRejectModal(null);
     setComment("");
   };
@@ -37,21 +69,21 @@ const ApprovalsPage = () => {
         <Card><CardContent className="py-12 text-center text-muted-foreground">No pending approvals</CardContent></Card>
       ) : isMobile ? (
         <div className="space-y-3">
-          {pendingExpenses.map((e) => (
-            <Card key={e.id}>
+          {pendingExpenses.map((expense) => (
+            <Card key={expense.id}>
               <CardContent className="p-4 space-y-3">
                 <div className="flex justify-between items-start">
                   <div>
-                    <p className="font-medium text-sm">{e.submittedBy}</p>
-                    <p className="text-xs text-muted-foreground">{e.description} · {e.category}</p>
+                    <p className="font-medium text-sm">{expense.employee?.name || expense.employee?.email}</p>
+                    <p className="text-xs text-muted-foreground">{expense.description || "Untitled"} · {expense.category?.name || "Uncategorized"}</p>
                   </div>
-                  <span className="text-sm font-bold">${e.amount.toFixed(2)}</span>
+                  <span className="text-sm font-bold">{formatMoney(expense.converted_amount || expense.amount, user?.currency || expense.currency)}</span>
                 </div>
                 <div className="flex gap-2">
-                  <Button size="sm" variant="success" className="flex-1" onClick={() => handleApprove(e.id)}>
+                  <Button size="sm" variant="success" className="flex-1" onClick={() => handleApprove(expense.id)}>
                     <Check className="h-3.5 w-3.5" /> Approve
                   </Button>
-                  <Button size="sm" variant="destructive" className="flex-1" onClick={() => setRejectModal(e.id)}>
+                  <Button size="sm" variant="destructive" className="flex-1" onClick={() => setRejectModal(String(expense.id))}>
                     <X className="h-3.5 w-3.5" /> Reject
                   </Button>
                 </div>
@@ -73,21 +105,21 @@ const ApprovalsPage = () => {
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {pendingExpenses.map((e) => (
-                  <tr key={e.id} className="hover:bg-muted/30">
+                {pendingExpenses.map((expense) => (
+                  <tr key={expense.id} className="hover:bg-muted/30">
                     <td className="p-3">
-                      <p className="text-sm font-medium">{e.submittedBy}</p>
-                      <p className="text-xs text-muted-foreground">{e.description}</p>
+                      <p className="text-sm font-medium">{expense.employee?.name || expense.employee?.email}</p>
+                      <p className="text-xs text-muted-foreground">{expense.description || "Untitled"}</p>
                     </td>
-                    <td className="p-3 text-sm">{e.category}</td>
-                    <td className="p-3 text-sm font-semibold text-right">${e.amount.toFixed(2)}</td>
-                    <td className="p-3"><StatusBadge status={e.status} /></td>
+                    <td className="p-3 text-sm">{expense.category?.name || "Uncategorized"}</td>
+                    <td className="p-3 text-sm font-semibold text-right">{formatMoney(expense.converted_amount || expense.amount, user?.currency || expense.currency)}</td>
+                    <td className="p-3"><StatusBadge status={normalizeStatus(expense.status)} /></td>
                     <td className="p-3 text-right">
                       <div className="flex justify-end gap-2">
-                        <Button size="sm" variant="success" onClick={() => handleApprove(e.id)}>
+                        <Button size="sm" variant="success" onClick={() => handleApprove(expense.id)}>
                           <Check className="h-3.5 w-3.5" /> Approve
                         </Button>
-                        <Button size="sm" variant="destructive" onClick={() => setRejectModal(e.id)}>
+                        <Button size="sm" variant="destructive" onClick={() => setRejectModal(String(expense.id))}>
                           <X className="h-3.5 w-3.5" /> Reject
                         </Button>
                       </div>

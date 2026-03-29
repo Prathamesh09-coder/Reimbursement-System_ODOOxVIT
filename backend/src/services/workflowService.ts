@@ -23,13 +23,13 @@ const buildWorkflowMetadata = (workflow: any) => {
 
 // ============ MANAGER RELATIONSHIPS ============
 
-export const assignManager = async (employeeId: number, managerId: number) => {
+export const assignManager = async (employeeId: number, managerId: number, companyId: number) => {
   if (employeeId === managerId) {
     throw new Error("Employee cannot be their own manager");
   }
 
-  const employee = await prisma.user.findUnique({ where: { id: employeeId } });
-  const manager = await prisma.user.findUnique({ where: { id: managerId } });
+  const employee = await prisma.user.findFirst({ where: { id: employeeId, company_id: companyId } });
+  const manager = await prisma.user.findFirst({ where: { id: managerId, company_id: companyId } });
 
   if (!employee) throw new Error("Employee not found");
   if (!manager) throw new Error("Manager not found");
@@ -49,9 +49,9 @@ export const assignManager = async (employeeId: number, managerId: number) => {
   });
 };
 
-export const getTeamMembers = async (managerId: number) => {
-  const manager = await prisma.user.findUnique({
-    where: { id: managerId },
+export const getTeamMembers = async (managerId: number, companyId: number) => {
+  const manager = await prisma.user.findFirst({
+    where: { id: managerId, company_id: companyId },
     include: { subordinates: { include: { role: true } } },
   });
 
@@ -60,9 +60,9 @@ export const getTeamMembers = async (managerId: number) => {
   return manager.subordinates;
 };
 
-export const getManagerHierarchy = async (employeeId: number) => {
-  const user = await prisma.user.findUnique({
-    where: { id: employeeId },
+export const getManagerHierarchy = async (employeeId: number, companyId: number) => {
+  const user = await prisma.user.findFirst({
+    where: { id: employeeId, company_id: companyId },
     include: { manager: { include: { manager: true } } },
   });
 
@@ -130,8 +130,9 @@ export const createWorkflow = async (data: {
   };
 };
 
-export const listWorkflows = async () => {
+export const listWorkflows = async (companyId: number) => {
   const workflows = await prisma.workflow.findMany({
+    where: { company_id: companyId },
     include: {
       steps: { include: { role: true, user: true }, orderBy: { step_order: "asc" } },
       rules: true,
@@ -146,9 +147,9 @@ export const listWorkflows = async () => {
   }));
 };
 
-export const getWorkflow = async (workflowId: number) => {
-  const workflow = await prisma.workflow.findUnique({
-    where: { id: workflowId },
+export const getWorkflow = async (workflowId: number, companyId: number) => {
+  const workflow = await prisma.workflow.findFirst({
+    where: { id: workflowId, company_id: companyId },
     include: {
       steps: { include: { role: true, user: true }, orderBy: { step_order: "asc" } },
       rules: true,

@@ -1,15 +1,28 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { MOCK_EXPENSES } from "@/data/mockData";
 import StatusBadge from "@/components/StatusBadge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ArrowLeft, CheckCircle, Clock, XCircle } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
+import { api, type Expense } from "@/lib/api";
+import { formatMoney, normalizeStatus } from "@/lib/domain";
 
 const ExpenseDetailPage = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const expense = MOCK_EXPENSES.find((e) => e.id === id);
+  const { token, user } = useAuth();
+  const [expense, setExpense] = useState<Expense | null>(null);
+
+  useEffect(() => {
+    const load = async () => {
+      if (!token || !id) return;
+      const details = await api.getExpense(token, id);
+      setExpense(details);
+    };
+
+    void load();
+  }, [id, token]);
 
   if (!expense) {
     return (
@@ -21,8 +34,8 @@ const ExpenseDetailPage = () => {
   }
 
   const stepIcon = (status: string) => {
-    if (status === "approved") return <CheckCircle className="h-5 w-5 text-success" />;
-    if (status === "rejected") return <XCircle className="h-5 w-5 text-destructive" />;
+    if (normalizeStatus(status) === "approved") return <CheckCircle className="h-5 w-5 text-success" />;
+    if (normalizeStatus(status) === "rejected") return <XCircle className="h-5 w-5 text-destructive" />;
     return <Clock className="h-5 w-5 text-warning" />;
   };
 
@@ -34,9 +47,9 @@ const ExpenseDetailPage = () => {
         </Button>
         <div className="flex-1">
           <h1 className="text-2xl font-bold tracking-tight">{expense.description}</h1>
-          <p className="text-muted-foreground text-sm">{expense.id}</p>
+          <p className="text-muted-foreground text-sm">#{expense.id}</p>
         </div>
-        <StatusBadge status={expense.status} />
+        <StatusBadge status={normalizeStatus(expense.status)} />
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -44,11 +57,11 @@ const ExpenseDetailPage = () => {
           <CardHeader><CardTitle className="text-base">Details</CardTitle></CardHeader>
           <CardContent className="space-y-3">
             {[
-              ["Category", expense.category],
-              ["Date", expense.date],
-              ["Amount", `${expense.currency} ${expense.amount.toFixed(2)}`],
-              ["Paid By", expense.paidBy],
-              ["Submitted By", expense.submittedBy],
+              ["Category", expense.category?.name || "Uncategorized"],
+              ["Date", expense.expense_date?.slice(0, 10) || "-"],
+              ["Amount", formatMoney(expense.converted_amount || expense.amount, user?.currency || expense.currency)],
+              ["Paid By", expense.paid_by || "-"],
+              ["Submitted By", expense.employee?.name || expense.employee?.email || "-"],
             ].map(([label, value]) => (
               <div key={label} className="flex justify-between text-sm">
                 <span className="text-muted-foreground">{label}</span>
@@ -68,19 +81,19 @@ const ExpenseDetailPage = () => {
           <CardHeader><CardTitle className="text-base">Approval Timeline</CardTitle></CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {expense.approvalHistory.map((step, i) => (
+              {(expense.approvals || []).map((step, i) => (
                 <div key={i} className="flex gap-3">
                   <div className="flex flex-col items-center">
-                    {stepIcon(step.status)}
-                    {i < expense.approvalHistory.length - 1 && (
+                    {stepIcon(step.status || "")}
+                    {i < (expense.approvals || []).length - 1 && (
                       <div className="w-px h-full bg-border mt-1" />
                     )}
                   </div>
                   <div className="pb-4">
-                    <p className="text-sm font-medium">{step.approver}</p>
-                    <p className="text-xs text-muted-foreground">{step.role}</p>
+                    <p className="text-sm font-medium">{step.approver?.name || step.approver?.email || "System"}</p>
+                    <p className="text-xs text-muted-foreground">{step.approver?.role?.name || step.role?.name || "-"}</p>
                     {step.comment && <p className="text-sm mt-1">{step.comment}</p>}
-                    {step.timestamp && <p className="text-xs text-muted-foreground mt-0.5">{step.timestamp}</p>}
+                    {step.action_time && <p className="text-xs text-muted-foreground mt-0.5">{new Date(step.action_time).toLocaleString()}</p>}
                   </div>
                 </div>
               ))}
