@@ -1,0 +1,234 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// ============= CORE MODELS =============
+
+model Company {
+  id         Int      @id @default(autoincrement())
+  name       String   @db.VarChar(255)
+  country    String?  @db.VarChar(100)
+  currency   String?  @db.VarChar(10)
+  is_active  Boolean  @default(true)
+  created_at DateTime @default(now())
+
+  users              User[]
+  expense_categories ExpenseCategory[]
+  workflows          Workflow[]
+  expenses           Expense[]
+  notifications      Notification[]
+
+  @@map("companies")
+}
+
+model Role {
+  id   Int    @id @default(autoincrement())
+  name String @unique @db.VarChar(50)
+
+  users             User[]
+  workflow_steps    WorkflowStep[]
+  expense_approvals ExpenseApproval[]
+
+  @@map("roles")
+}
+
+model User {
+  id                   Int      @id @default(autoincrement())
+  company_id           Int
+  role_id              Int
+  manager_id           Int?
+  name                 String?  @db.VarChar(255)
+  email                String   @unique
+  password_hash        String?  @db.Text
+  must_change_password Boolean  @default(true)
+  is_active            Boolean  @default(true)
+  created_at           DateTime @default(now())
+
+  company      Company @relation(fields: [company_id], references: [id])
+  role         Role    @relation(fields: [role_id], references: [id])
+  manager      User?   @relation("ManagerSubordinates", fields: [manager_id], references: [id])
+  subordinates User[]  @relation("ManagerSubordinates")
+
+  managed_workflow_steps WorkflowStep[]    @relation("UserWorkflowSteps")
+  as_special_approver    WorkflowRule[]    @relation("SpecialApprover")
+  expenses               Expense[]
+  approvals              ExpenseApproval[] @relation("Approver")
+  notifications          Notification[]
+  password_tokens        PasswordToken[]
+  audit_logs             AuditLog[]
+
+  @@map("users")
+}
+
+// ============= EXPENSE CATEGORIES =============
+
+model ExpenseCategory {
+  id         Int    @id @default(autoincrement())
+  company_id Int?
+  name       String @db.VarChar(100)
+
+  company  Company?  @relation(fields: [company_id], references: [id])
+  expenses Expense[]
+
+  @@map("expense_categories")
+}
+
+// ============= WORKFLOW MODELS =============
+
+model Workflow {
+  id         Int      @id @default(autoincrement())
+  company_id Int
+  name       String?  @db.VarChar(255)
+  created_at DateTime @default(now())
+
+  company Company        @relation(fields: [company_id], references: [id])
+  steps   WorkflowStep[]
+  rules   WorkflowRule[]
+
+  @@map("workflows")
+}
+
+model WorkflowStep {
+  id          Int     @id @default(autoincrement())
+  workflow_id Int
+  step_order  Int
+  role_id     Int?
+  user_id     Int?
+  is_required Boolean @default(true)
+
+  workflow Workflow @relation(fields: [workflow_id], references: [id])
+  role     Role?    @relation(fields: [role_id], references: [id])
+  user     User?    @relation("UserWorkflowSteps", fields: [user_id], references: [id])
+
+  @@map("workflow_steps")
+}
+
+model WorkflowRule {
+  id                      Int      @id @default(autoincrement())
+  workflow_id             Int?
+  min_approval_percentage Int?
+  is_sequential           Boolean?
+  special_approver_id     Int?
+
+  workflow         Workflow? @relation(fields: [workflow_id], references: [id])
+  special_approver User?     @relation("SpecialApprover", fields: [special_approver_id], references: [id])
+
+  @@map("workflow_rules")
+}
+
+// ============= EXPENSE MODELS =============
+
+model Expense {
+  id               Int       @id @default(autoincrement())
+  company_id       Int
+  employee_id      Int
+  workflow_id      Int?
+  amount           Decimal?  @db.Decimal(10, 2)
+  currency         String?   @db.VarChar(10)
+  converted_amount Decimal?  @db.Decimal(10, 2)
+  category_id      Int?
+  description      String?   @db.Text
+  paid_by          String?   @db.VarChar(50)
+  expense_date     DateTime?
+  receipt_url      String?   @db.Text
+  remarks          String?   @db.Text
+  status           String    @default("DRAFT") @db.VarChar(50)
+  current_step     Int       @default(1)
+  created_at       DateTime  @default(now())
+
+  company    Company           @relation(fields: [company_id], references: [id])
+  employee   User              @relation(fields: [employee_id], references: [id])
+  category   ExpenseCategory?  @relation(fields: [category_id], references: [id])
+  items      ExpenseItem[]
+  approvals  ExpenseApproval[]
+  audit_logs AuditLog[]
+
+  @@index([company_id, status], name: "idx_exp_company_status")
+  @@index([employee_id], name: "idx_exp_employee")
+  @@map("expenses")
+}
+
+model ExpenseItem {
+  id         Int      @id @default(autoincrement())
+  expense_id Int?
+  item_name  String?  @db.VarChar(255)
+  amount     Decimal? @db.Decimal(10, 2)
+
+  expense Expense? @relation(fields: [expense_id], references: [id])
+
+  @@map("expense_items")
+}
+
+model ExpenseApproval {
+  id          Int       @id @default(autoincrement())
+  expense_id  Int
+  step_order  Int?
+  approver_id Int?
+  role_id     Int?
+  status      String?   @db.VarChar(50)
+  comment     String?   @db.Text
+  action_time DateTime?
+
+  expense  Expense @relation(fields: [expense_id], references: [id])
+  approver User?   @relation("Approver", fields: [approver_id], references: [id])
+  role     Role?   @relation(fields: [role_id], references: [id])
+
+  @@index([expense_id], name: "idx_approval_expense")
+  @@map("expense_approvals")
+}
+
+// ============= NOTIFICATIONS & TOKENS =============
+
+model Notification {
+  id             Int      @id @default(autoincrement())
+  company_id     Int?
+  user_id        Int?
+  message        String?  @db.Text
+  type           String?  @db.VarChar(50)
+  reference_id   Int?
+  reference_type String?  @db.VarChar(50)
+  is_read        Boolean  @default(false)
+  created_at     DateTime @default(now())
+
+  company Company? @relation(fields: [company_id], references: [id])
+  user    User?    @relation(fields: [user_id], references: [id])
+
+  @@index([user_id], name: "idx_notifications_user")
+  @@map("notifications")
+}
+
+model PasswordToken {
+  id         Int       @id @default(autoincrement())
+  user_id    Int?
+  token      String?   @db.VarChar(255)
+  type       String?   @db.VarChar(50)
+  expires_at DateTime?
+
+  user User? @relation(fields: [user_id], references: [id])
+
+  @@map("password_tokens")
+}
+
+// ============= AUDIT LOGS =============
+
+model AuditLog {
+  id         Int      @id @default(autoincrement())
+  expense_id Int?
+  user_id    Int?
+  action     String   @db.VarChar(50)
+  comment    String?  @db.Text
+  created_at DateTime @default(now())
+
+  expense Expense? @relation(fields: [expense_id], references: [id])
+  user    User?    @relation(fields: [user_id], references: [id])
+
+  @@map("audit_logs")
+}
